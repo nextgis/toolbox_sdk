@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toolbox-sdk"
+version = "0.1.0.dev0"
+description = "Official Python SDK for NextGIS Toolbox providing convenient access to geographical data processing tools"
+authors = [{ name = "NextGIS", email = "info@nextgis.com" }]
+readme = "README.md"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+keywords = ["gis", "nextgis", "toolbox", "spatial", "geospatial", "geography", "mapping"]
+requires-python = ">=3.8"
+dependencies = ["filetype>=1.2.0", "requests>=2.28.0"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "python-dotenv>=1.0.1",
+    "responses>=0.25.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/nextgis/toolbox_sdk"
+Repository = "https://github.com/nextgis/toolbox_sdk.git"
+Issues = "https://github.com/nextgis/toolbox_sdk/issues"
+
+[tool.ruff]
+lint.select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/toolbox_sdk/__init__.py" = ["F401"]
+
+[tool.ruff.lint.isort]
+known-local-folder = ["conftest"]
