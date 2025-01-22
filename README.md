@@ -152,26 +152,27 @@ print(result.outputs)
 
 ## Key Components
 
-* ToolboxClient: Main client for API interaction
-* Tool: Represents individual Toolbox tools
-* Task: Handles asynchronous operations
-* DownloadManager: Manages file downloads
+- ToolboxClient: Main client for API interaction
+- Tool: Represents individual Toolbox tools
+- Task: Handles asynchronous operations
+- DownloadManager: Manages file downloads
 
 ## Error Handling
 
 The SDK provides specific exceptions:
-* ToolboxError: Base exception
-* ToolboxAPIError: API-related errors
-* ToolboxTimeoutError: Timeout errors
 
+- ToolboxError: Base exception
+- ToolboxAPIError: API-related errors
+- ToolboxTimeoutError: Timeout errors
 
 ### Requirements
-* Python ≥ 3.8
-* requests ≥ 2.28.0
-* filetype >= 1.2.0
-* pytest ≥ 8.3.4 (for testing)
-* responses ≥ 0.25.3 (for testing)
-* python-dotenv ≥ 1.0.1 (for examples)
+
+- Python ≥ 3.8
+- requests ≥ 2.28.0
+- filetype >= 1.2.0
+- pytest ≥ 8.3.4 (for testing)
+- responses ≥ 0.25.3 (for testing)
+- python-dotenv ≥ 1.0.1 (for examples)
 
 ## License
 
@@ -183,25 +184,11 @@ For issues and feature requests, please use the GitHub issue tracker.
 
 ## Development
 
+First, install [hatch](https://hatch.pypa.io/), then clone the repository:
+
 ```bash
 $ git clone git@github.com:nextgis/toolbox_sdk.git
 $ cd toolbox_sdk
-$ python -m venv env
-$ . env/bin/activate
-$ pip install -e ./[dev]
 ```
 
-Use the following command to run unit tests:
-
-```bash
-$ python -m pytest tests/unittests
-```
-
-Integration tests require access to the Toolbox API and a valid API key. They use the `hello` and `r_mapcalc` tools to verify how different components work together. You can run them using:
-
-```bash
-$ export TOOLBOX_API_KEY=...
-$ python -m pytest tests/integration
-```
-
-Alternatively, you can store `TOOLBOX_API_KEY` (and optionally `TOOLBOX_BASE_URL`) in the `.env` file to avoid setting them manually each time.
+And then use hatch commands: `hatch test`, `hatch fmt`, `hatch build`, etc. To run integration tests, provide `TOOLBOX_API_KEY` (and optionally `TOOLBOX_BASE_URL`) in the `.env` file to avoid setting them using environment variables each time. The tests will use `load_env()` as described above.
