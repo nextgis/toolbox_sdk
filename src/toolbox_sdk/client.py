@@ -589,38 +589,11 @@ class ToolboxClient:
 
     def _upload_file_obj(self, file_obj: BinaryIO, filename: str) -> str:
         """Internal file upload helper with progress tracking"""
-        # Get file size
-        file_obj.seek(0, 2)  # Seek to end
-        file_size = file_obj.tell()
-        file_obj.seek(0)  # Reset to beginning
-
-        logger.info(f"Starting upload of {filename} ({file_size / 1024 / 1024:.1f} MB)")
-
-        # Create upload progress tracker
-        uploaded = 0
-        last_percentage = 0
-
-        def upload_callback(monitor):
-            nonlocal uploaded, last_percentage
-            uploaded += len(monitor)
-            percentage = int((uploaded / file_size) * 100)
-            if percentage > last_percentage and percentage % 10 == 0:
-                logger.info(f"Upload progress for {filename}: {percentage}%")
-                last_percentage = percentage
-
-        # Create generator that tracks progress
-        def file_generator():
-            chunk_size = 8192
-            while True:
-                chunk = file_obj.read(chunk_size)
-                if not chunk:
-                    break
-                upload_callback(chunk)
-                yield chunk
-
         response = self._post(
-            f"/api/upload/?filename={filename}", data=file_generator()
+            f"/api/upload/?filename={filename}",
+            data=FileUploadMonitor(file_obj, filename),
         )
+
         logger.info(f"Upload completed for {filename}")
         return response.text
 
@@ -635,3 +608,38 @@ class ToolboxClient:
         response = self.session.post(f"{self.base_url}{path}", **kwargs)
         response.raise_for_status()
         return response
+
+
+class FileUploadMonitor:
+    def __init__(self, fileobj: BinaryIO, name: str):
+        self.fileobj = fileobj
+
+        fileobj.seek(0, 2)  # Seek to end
+        self.file_size = fileobj.tell()
+        fileobj.seek(0)  # Reset to beginning
+
+        self.uploaded = 0
+        self.last_percentage = 0
+
+        logger.info(f"Starting upload of {name} ({self.file_size} bytes)")
+
+    def __len__(self):
+        # NOTE: We need to report the length of the file, otherwise requests
+        # will switch to chunked transfer encoding and it may fail.
+        return self.file_size
+
+    def __iter__(self):
+        chunk_size = 8192
+        while True:
+            chunk = self.fileobj.read(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+            self.upload_callback(len(chunk))
+
+    def upload_callback(self, nbytes: int):
+        self.uploaded += nbytes
+        percentage = int((self.uploaded / self.file_size) * 100)
+        if percentage > self.last_percentage and percentage % 10 == 0:
+            logger.info(f"Upload progress: {percentage}%")
+            self.last_percentage = percentage
