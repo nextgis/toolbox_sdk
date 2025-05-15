@@ -31,3 +31,4 @@ toolbox.download_results(result, ".")
 
 # Check the outputs of the tool
 print(result.outputs)
+print(result.get_all_file_paths())

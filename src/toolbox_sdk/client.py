@@ -4,6 +4,7 @@ import logging
 import math
 import mimetypes
 import os
+import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +12,7 @@ from functools import wraps
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, BinaryIO, Dict, Optional, Tuple, Union
+from urllib.parse import unquote
 
 import filetype
 import requests
@@ -92,11 +94,29 @@ class DownloadManager:
 
         return chunk_info.temp_file
 
-    def _get_file_size(self, url: str) -> int:
-        """Get total file size using HEAD request"""
+    def _file_summary(self, url: str) -> Tuple[int, Union[str, None]]:
+        "Fetch file size and name using HEAD request"
+
         response = self.client.session.head(url)
         response.raise_for_status()
-        return int(response.headers.get("content-length", 0))
+
+        content_length = response.headers.get("content-length")
+        if content_length is None:
+            # The Content-Length header might be missing in Django's HTTP server
+            # for HEAD requests. In such cases, use the X-Content-Length header
+            # as a fallback.
+            content_length = response.headers.get("x-content-length", 0)
+        size = int(content_length)
+
+        name = None
+        if content_disposition := response.headers.get("content-disposition"):
+            match = re.search(
+                r'filename="([^"]+)"|filename=([^;]+)', content_disposition
+            )
+            if match:
+                name = unquote(match.group(1))
+
+        return size, name
 
     def download_file(self, url: str, destination: Union[str, Path]) -> Path:
         """Download a file from the given URL to the specified destination.
@@ -122,7 +142,7 @@ class DownloadManager:
 
     def _parallel_download(self, url: str, destination: Path) -> Path:
         """Download file using parallel processing"""
-        total_size = self._get_file_size(url)
+        total_size = self._file_summary(url)[0]
         chunk_size = math.ceil(total_size / self.config.max_workers)
         chunks = []
 
@@ -271,12 +291,14 @@ class Task:
                 )
                 return self._result
 
-            elif current_state in ("FAILED", "ERROR", "REVOKED"):
+            elif current_state in ("FAILED", "ERROR", "REVOKED", "CANCELLED"):
                 error_msg = status.get("error", "Unknown error")
                 logger.error(
                     f"Task {self.task_id} failed after {elapsed_time:.1f}s: {error_msg}"
                 )
-                raise ToolboxAPIError(f"Task failed: {error_msg}")
+                raise ToolboxAPIError(
+                    f"Task failed: state: {current_state} error message: {error_msg}"
+                )
 
             logger.debug(
                 f"Task {self.task_id} elapsed time {elapsed_time:.1f}s, "
@@ -286,50 +308,75 @@ class Task:
 
 
 class Tool:
-    """Represents a NextGIS Toolbox tool that can be executed.
+    """Represents a Toolbox tool"""
 
-    Provides both synchronous and asynchronous execution methods.
-
-    Args:
-        client (ToolboxClient): The parent ToolboxClient instance
-        name (str): Name of the tool
-    """
-
-    def __init__(self, client: ToolboxClient, name: str):
+    def __init__(self, client, name):
         self.client = client
         self.name = name
 
-    def __call__(self, inputs: Dict[str, Any]) -> TaskResult:
-        """Execute the tool synchronously.
-
-        Args:
-            inputs (Dict[str, Any]): Tool parameters and input files
-
-        Returns:
-            TaskResult: Result of the tool execution
-
-        Raises:
-            ToolboxAPIError: If tool execution fails
-        """
-        task = self.submit(inputs)
-        return task.wait_for_completion()
-
-    @retry_decorator(max_retries=3, backoff_factor=0.3)
     def submit(self, inputs: Dict[str, Any]) -> Task:
-        """Submit the tool for asynchronous execution.
+        """Submit a task to run the tool asynchronously.
 
         Args:
-            inputs (Dict[str, Any]): Tool parameters and input files
+            inputs (Dict[str, Any]): Tool inputs
 
         Returns:
             Task: Task object to track execution
-
-        Raises:
-            ToolboxAPIError: If submission fails
         """
-        json_request = {"operation": self.name, "inputs": inputs, "mode": "ui"}
-        response = self.client._post("/api/json/execute/", json=json_request)
-        return Task(self.client, response.json()["task_id"])
+        # Process inputs to handle TaskResult objects
+        processed_inputs = {}
+        for key, value in inputs.items():
+            if isinstance(value, TaskResult):
+                # If the input is a single-output TaskResult, use its value
+                if len(value.outputs) == 1:
+                    processed_inputs[key] = value.value
+                else:
+                    # For multi-output TaskResult, check if the key exists
+                    try:
+                        processed_inputs[key] = value[key]
+                    except KeyError:
+                        raise ValueError(
+                            "Cannot use multi-output TaskResult directly as input. "
+                            "Please specify which output to use with result['output_name']"
+                        )
+            else:
+                processed_inputs[key] = value
+
+        # Construct the correct JSON payload
+        payload = {"operation": self.name, "inputs": processed_inputs, "mode": "ui"}
+
+        logger.debug(f"Submitting task for tool {self.name} with payload: {payload}")
+
+        response = self.client.session.post(
+            f"{self.client.base_url}/api/json/execute/",
+            json=payload,
+        )
+
+        # If there's an error, try to get more details from the response
+        if response.status_code >= 400:
+            try:
+                error_details = response.json()
+                error_message = f"API error: {response.status_code} - {error_details}"
+            except Exception:
+                error_message = f"API error: {response.status_code} - {response.text}"
+            logger.error(error_message)
+            raise ToolboxAPIError(error_message)
+
+        response.raise_for_status()
+        data = response.json()
+        return Task(self.client, data["task_id"])
+
+    def __call__(self, inputs: Dict[str, Any]) -> TaskResult:
+        """Run the tool synchronously.
+
+        Args:
+            inputs (Dict[str, Any]): Tool inputs
+
+        Returns:
+            TaskResult: Tool execution result
+        """
+        task = self.submit(inputs)
+        return task.wait_for_completion()
 
 
 class ToolboxClient:
@@ -414,6 +461,8 @@ class ToolboxClient:
         file_id: str,
         destination: Union[str, Path],
         use_parallel: Optional[bool] = None,
+        output_name: Optional[str] = None,
+        task_result: Optional[TaskResult] = None,
     ) -> Path:
         """Download a file from the Toolbox.
 
@@ -421,6 +470,8 @@ class ToolboxClient:
             file_id (str): ID or URL of file to download
             destination (Union[str, Path]): Where to save the file
             use_parallel (Optional[bool]): Override parallel download setting
+            output_name (Optional[str]): Name of the output this file belongs to
+            task_result (Optional[TaskResult]): Task result to register the file with
 
         Returns:
             Path: Path to downloaded file
@@ -439,9 +490,14 @@ class ToolboxClient:
                 else f"{self.base_url}/api/download/{file_id}"
             )
 
-            # Get file size
-            response = self.session.head(url)
-            total_size = int(response.headers.get("content-length", 0))
+            # Get file size and check for content-disposition header
+            total_size, filename = self.download_manager._file_summary(url)
+
+            if filename:
+                destination = Path(destination) / filename
+            else:
+                # If filename not in header, use the original destination
+                destination = Path(destination)
 
             logger.info(
                 f"Starting download to {destination} "
@@ -467,6 +523,23 @@ class ToolboxClient:
 
             result = self.download_manager.download_file(url, destination)
             logger.info(f"Download completed to {destination}")
+
+            # If filename wasn't in header, determine file type and rename if necessary
+            if not filename:
+                file_type = self.determine_file_types({destination.name: destination})[
+                    destination
+                ]
+                extension = self._get_extension_from_mime(file_type)
+                new_path = destination.with_suffix(extension)
+                if new_path != destination:
+                    destination.rename(new_path)
+                    result = new_path
+                    logger.info(f"Renamed {destination} to {new_path}")
+
+            # Register the downloaded file with the task result if provided
+            if task_result is not None and output_name is not None:
+                task_result.register_downloaded_file(output_name, result)
+
             return result
 
         finally:
@@ -475,52 +548,36 @@ class ToolboxClient:
 
     def download_results(
         self,
-        result: TaskResult,
-        output_dir: Union[str, Path] = ".",
-    ) -> Dict[str, Path]:
+        task_result: TaskResult,
+        destination: Union[str, Path],
+        use_parallel: Optional[bool] = None,
+    ) -> TaskResult:
         """Download all file outputs from a task result.
 
         Args:
-            result (TaskResult): Task result containing outputs
-            output_dir (Union[str, Path]): Directory to save files to
-                (default: current directory)
+            task_result (TaskResult): The task result containing outputs
+            destination (Union[str, Path]): Directory where to save the files
+            use_parallel (Optional[bool]): Override parallel download setting
 
         Returns:
-            Dict[str, Path]: Mapping of output names to downloaded file paths
-
-        Raises:
-            ToolboxError: If any download fails
+            TaskResult: The same task result with registered file paths
         """
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        destination = Path(destination)
+        if not destination.exists():
+            destination.mkdir(parents=True)
 
-        downloaded_files = {}
-
-        for output in result.outputs:
+        for output in task_result.outputs:
             if output.get("type") == "file":
-                file_name = output.get("name", "unnamed")
-                base_name = Path(file_name).stem
+                file_id = output["value"]
+                self.download_file(
+                    file_id=file_id,
+                    destination=destination,
+                    use_parallel=use_parallel,
+                    output_name=output["name"],
+                    task_result=task_result,
+                )
 
-                counter = 1
-                while True:
-                    if counter == 1:
-                        unique_name = base_name
-                    else:
-                        unique_name = f"{base_name}_{counter}"
-
-                    file_path = output_dir / unique_name
-                    if not file_path.exists():
-                        break
-                    counter += 1
-
-                downloaded_path = self.download_file(output["value"], file_path)
-                downloaded_files[file_name] = downloaded_path
-                logger.info(f"Downloaded {file_name} to {downloaded_path}")
-
-        file_types = self.determine_file_types(downloaded_files)
-        renamed_files = self.rename_files_with_extensions(downloaded_files, file_types)
-
-        return renamed_files
+        return task_result
 
     def determine_file_types(self, files: Dict[str, Path]) -> Dict[Path, str]:
         """Determine the MIME types of the downloaded files.

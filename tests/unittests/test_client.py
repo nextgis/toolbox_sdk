@@ -110,13 +110,15 @@ class TestToolboxClient:
     @responses.activate
     def test_simple_download_no_parallel(self, client, tmp_path):
         test_content = b"test content"
-        output_file = tmp_path / "output.txt"
 
         # Mock HEAD request
         responses.add(
             responses.HEAD,
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
-            headers={"content-length": str(len(test_content))},
+            headers={
+                "content-length": str(len(test_content)),
+                "content-disposition": 'attachment; filename="test_file.txt"'
+            },
             status=200,
         )
 
@@ -128,7 +130,7 @@ class TestToolboxClient:
             status=200,
         )
 
-        result = client.download_file(TEST_FILE_ID, output_file, use_parallel=False)
+        result = client.download_file(TEST_FILE_ID, tmp_path, use_parallel=False)
 
         # Verify the result
         assert result.exists()

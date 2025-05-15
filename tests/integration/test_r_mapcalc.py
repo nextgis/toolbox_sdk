@@ -19,11 +19,23 @@ def test_r_mapcalc(toolbox_client: ToolboxClient, tmp_path, monkeypatch):
     # Download results using simple download manager
     simple_dir = tmp_path / "simple"
     simple_dir.mkdir()
-    simple_files = toolbox_client.download_results(result, simple_dir)
+    toolbox_client.download_results(result, simple_dir)
+
+    # Get the downloaded file paths
+    simple_files = result.get_all_file_paths()
 
     # Verify downloads
     assert len(simple_files) > 0
     assert all(p.exists() for p in simple_files.values())
+
+    # Create a new result object for parallel download to avoid mixing file paths
+    parallel_result = mapcalc(
+        {
+            "A": toolbox_client.upload_file(base / "data/band4.tif"),
+            "B": toolbox_client.upload_file(base / "data/band5.tif"),
+            "expression": "A + B",
+        }
+    )
 
     # Download results using parallel download manager
     parallel_dm = DownloadManager(toolbox_client, DownloadConfig(use_parallel=True))
@@ -31,8 +43,16 @@ def test_r_mapcalc(toolbox_client: ToolboxClient, tmp_path, monkeypatch):
 
     parallel_dir = tmp_path / "parallel"
     parallel_dir.mkdir()
-    parallel_files = toolbox_client.download_results(result, parallel_dir)
+    toolbox_client.download_results(parallel_result, parallel_dir)
+
+    # Get the downloaded file paths
+    parallel_files = parallel_result.get_all_file_paths()
 
     # Compare with simple download manager results
-    for k, v in parallel_files.items():
-        assert filecmp.cmp(v, simple_files[k], shallow=False)
+    assert len(simple_files) == len(parallel_files)
+
+    # Compare file contents (need to match by output name since paths are different)
+    for output_name in simple_files.keys():
+        simple_path = simple_files[output_name]
+        parallel_path = parallel_files[output_name]
+        assert filecmp.cmp(simple_path, parallel_path, shallow=False)

@@ -32,3 +32,5 @@ toolbox.download_results(result, ".")
 
 # Check the outputs of the tool
 print(result.outputs)
+print(result.get_all_file_paths())
+print(result.get_file_path_as_string("result_raster"))
