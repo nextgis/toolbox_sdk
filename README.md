@@ -278,7 +278,6 @@ print(f"File paths: {loaded_result['file_paths']}")
 - Tool: Represents individual Toolbox tools
 - Task: Handles asynchronous operations
 - TaskResult: Stores tool outputs and downloaded file paths
-- DownloadManager: Manages file downloads
 
 ## Error Handling
 
@@ -292,7 +291,6 @@ The SDK provides specific exceptions:
 
 - Python ≥ 3.8
 - requests ≥ 2.28.0
-- filetype >= 1.2.0
 - pytest ≥ 8.3.4 (for testing)
 - responses ≥ 0.25.3 (for testing)
 - python-dotenv ≥ 1.0.1 (for examples)

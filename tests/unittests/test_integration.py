@@ -1,6 +1,6 @@
 import responses
 
-from conftest import TEST_BASE_URL, TEST_FILE_ID, TEST_TASK_ID, add_download_mocks
+from conftest import TEST_BASE_URL, TEST_FILE_ID, TEST_TASK_ID
 
 
 class TestIntegration:
@@ -33,17 +33,37 @@ class TestIntegration:
             rsps.add(
                 responses.GET,
                 f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
-                json={"state": "SUCCESS", "output": {"file": "result-file-id"}},
+                json={
+                    "state": "SUCCESS",
+                    "output": [
+                        {
+                            "name": "file",
+                            "title": "Output File",
+                            "type": "file",
+                            "value": "result-file-id"
+                        }
+                    ]
+                },
                 status=200,
             )
 
-            # Use helper function to add download-related mocks without the simple GET
-            add_download_mocks(
-                rsps,
+            # Mock HEAD request for download
+            rsps.add(
+                responses.HEAD,
                 f"{TEST_BASE_URL}/api/download/result-file-id",
-                test_output_content,
-                workers=4,  # Use fixed number of workers for predictability
-                include_simple_get=False,  # Do not add the regular GET request
+                headers={
+                    "content-length": str(len(test_output_content)),
+                    "content-disposition": 'attachment; filename="result.txt"'
+                },
+                status=200,
+            )
+
+            # Mock GET request for download
+            rsps.add(
+                responses.GET,
+                f"{TEST_BASE_URL}/api/download/result-file-id",
+                body=test_output_content,
+                status=200,
             )
 
             # Execute workflow
@@ -51,26 +71,18 @@ class TestIntegration:
             file_id = client.upload_file(input_file)
             result = tool_instance({"input": file_id})
             output_file = tmp_path / "output.txt"
-            downloaded_file = client.download_file(
-                result.outputs["file"], output_file, use_parallel=True
-            )
+            downloaded_file = client.download_file(result["file"], output_file)
 
             # Verify results
             assert downloaded_file.exists()
             assert downloaded_file.read_bytes() == test_output_content
 
             # Verify all expected requests were made
-            expected_calls = 5 + client.download_manager.config.max_workers
-            # 5 = upload + execute + status + HEAD + HEAD, plus GET requests workers
-            assert len(rsps.calls) == expected_calls
+            assert len(rsps.calls) == 5  # upload + execute + status + HEAD + GET
 
             # Verify request sequence
             assert rsps.calls[0].request.method == "POST"  # Upload
             assert rsps.calls[1].request.method == "POST"  # Execute
             assert rsps.calls[2].request.method == "GET"  # Status
             assert rsps.calls[3].request.method == "HEAD"  # File size check
-            assert rsps.calls[4].request.method == "HEAD"  # File size check
-
-            for call in rsps.calls[5:]:
-                assert call.request.method == "GET"  # Chunk downloads
-                assert "Range" in call.request.headers
+            assert rsps.calls[4].request.method == "GET"  # Download

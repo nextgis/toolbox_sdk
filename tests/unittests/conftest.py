@@ -1,5 +1,3 @@
-import math
-
 import pytest
 import responses
 
@@ -10,56 +8,6 @@ TEST_BASE_URL = "https://toolbox.example.com"
 TEST_TOOL_NAME = "convert"
 TEST_TASK_ID = "test-task-id"
 TEST_FILE_ID = "test-file-id"
-
-
-def add_download_mocks(
-    rsps,
-    url: str,
-    content: bytes,
-    workers: int = 2,
-    include_simple_get: bool = True,
-):
-    """Helper function to add all necessary download-related mocks"""
-    content_length = len(content)
-
-    # Add HEAD request mock
-    rsps.add(
-        responses.HEAD,
-        url,
-        headers={"content-length": str(content_length)},
-        status=200,
-    )
-
-    # Calculate chunk sizes and boundaries
-    chunk_size = math.ceil(content_length / workers)
-    chunks = []
-
-    # Create non-overlapping chunks
-    for i in range(workers):
-        start = i * chunk_size
-        end = min((i + 1) * chunk_size - 1, content_length - 1)
-        chunk_content = content[start : end + 1]
-        chunks.append((start, end, chunk_content))
-
-    # Add range request mocks for parallel download first
-    for start, end, chunk_content in chunks:
-        rsps.add(
-            responses.GET,
-            url,
-            match=[
-                responses.matchers.header_matcher({"Range": f"bytes={start}-{end}"})
-            ],
-            body=chunk_content,
-            status=206,
-            headers={
-                "Content-Range": f"bytes {start}-{end}/{content_length}",
-                "Content-Length": str(len(chunk_content)),
-            },
-        )
-
-    # Add regular GET request mock for non-parallel download if included
-    if include_simple_get:
-        rsps.add(responses.GET, url, body=content, status=200)
 
 
 @pytest.fixture
@@ -73,9 +21,6 @@ def download_config():
     """Create a DownloadConfig instance for testing"""
     return DownloadConfig(
         chunk_size=1024,
-        max_workers=2,
-        use_parallel=True,
-        verify_hash=True,
         max_retries=2,
         backoff_factor=0.1,
     )

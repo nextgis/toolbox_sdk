@@ -1,28 +1,23 @@
 from __future__ import annotations
 
 import logging
-import math
-import mimetypes
 import os
 import re
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Any, BinaryIO, Dict, Optional, Tuple, Union
 from urllib.parse import unquote
 
-import filetype
 import requests
+from requests import JSONDecodeError
 from requests.adapters import HTTPAdapter
 from requests.utils import default_user_agent
 from urllib3.util.retry import Retry
 
-from .exceptions import ToolboxAPIError, ToolboxError, ToolboxTimeoutError
-from .mime_types import get_extension_from_mime
-from .types import ChunkInfo, DownloadConfig, TaskResult
+from .exceptions import ToolboxAPIError, ToolboxTimeoutError
+from .types import DownloadConfig, TaskResult
 from .version import __version__
 
 logger = logging.getLogger(__name__)
@@ -57,141 +52,6 @@ def retry_decorator(
         return wrapper
 
     return decorator
-
-
-class DownloadManager:
-    """Manages file downloads with support for parallel processing and progress
-    tracking.
-
-    This class handles both simple and parallel downloads with configurable
-    chunk sizes, retry logic, and progress callbacks.
-
-    Args:
-        client (ToolboxClient): The parent ToolboxClient instance
-        config (Optional[DownloadConfig]): Download configuration settings
-    """
-
-    def __init__(self, client: ToolboxClient, config: Optional[DownloadConfig] = None):
-        self.client = client
-        self.config = config or DownloadConfig()
-
-    @retry_decorator(max_retries=3, backoff_factor=0.3)
-    def _download_chunk(self, url: str, chunk_info: ChunkInfo) -> Path:
-        """Download a single chunk with progress tracking"""
-        headers = {"Range": f"bytes={chunk_info.start}-{chunk_info.end}"}
-        response = self.client.session.get(url, headers=headers, stream=True)
-
-        response.raise_for_status()
-        if response.status_code != 206:
-            raise ToolboxError("Range requests not supported")
-
-        with open(chunk_info.temp_file, "wb") as f:
-            for chunk in response.iter_content(chunk_size=self.config.chunk_size):
-                if chunk:
-                    f.write(chunk)
-                    if self.config.progress_callback:
-                        self.config.progress_callback(len(chunk))
-
-        return chunk_info.temp_file
-
-    def _file_summary(self, url: str) -> Tuple[int, Union[str, None]]:
-        "Fetch file size and name using HEAD request"
-
-        response = self.client.session.head(url)
-        response.raise_for_status()
-
-        content_length = response.headers.get("content-length")
-        if content_length is None:
-            # The Content-Length header might be missing in Django's HTTP server
-            # for HEAD requests. In such cases, use the X-Content-Length header
-            # as a fallback.
-            content_length = response.headers.get("x-content-length", 0)
-        size = int(content_length)
-
-        name = None
-        if content_disposition := response.headers.get("content-disposition"):
-            match = re.search(
-                r'filename="([^"]+)"|filename=([^;]+)', content_disposition
-            )
-            if match:
-                name = unquote(match.group(1))
-
-        return size, name
-
-    def download_file(self, url: str, destination: Union[str, Path]) -> Path:
-        """Download a file from the given URL to the specified destination.
-
-        Supports both simple and parallel downloads based on configuration.
-
-        Args:
-            url (str): The URL to download from
-            destination (Union[str, Path]): Local path where the file should be saved
-            headers (Optional[Dict]): Additional HTTP headers for the request
-
-        Returns:
-            Path: Path to the downloaded file
-
-        Raises:
-            ToolboxError: If download fails after retries
-        """
-        return (
-            self._parallel_download
-            if self.config.use_parallel
-            else self._simple_download
-        )(url, Path(destination))
-
-    def _parallel_download(self, url: str, destination: Path) -> Path:
-        """Download file using parallel processing"""
-        total_size = self._file_summary(url)[0]
-        chunk_size = math.ceil(total_size / self.config.max_workers)
-        chunks = []
-
-        with TemporaryDirectory(dir=destination.parent) as temp_dir_name:
-            temp_dir = Path(temp_dir_name)
-
-            # Create chunks with proper boundaries
-            for i in range(self.config.max_workers):
-                start = i * chunk_size
-                end = min((i + 1) * chunk_size - 1, total_size - 1)
-                temp_file = temp_dir / f"chunk_{i}.tmp"
-                chunks.append(ChunkInfo(start, end, i, temp_file))
-
-            # Download chunks in parallel
-            with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-                futures = [
-                    executor.submit(self._download_chunk, url, chunk)
-                    for chunk in chunks
-                ]
-
-                # Wait for all chunks to complete
-                completed_files = []
-                for future in as_completed(futures):
-                    try:
-                        completed_files.append(future.result())
-                    except Exception as e:
-                        raise ToolboxError(f"Chunk download failed: {str(e)}")
-
-            # Combine chunks in order
-            with open(destination, "wb") as outfile:
-                for chunk in sorted(chunks, key=lambda x: x.index):
-                    if chunk.temp_file.exists():
-                        with open(chunk.temp_file, "rb") as infile:
-                            outfile.write(infile.read())
-
-        return destination
-
-    @retry_decorator(max_retries=3, backoff_factor=0.3)
-    def _simple_download(self, url: str, destination: Path) -> Path:
-        """Simple streaming download"""
-        response = self.client.session.get(url, stream=True)
-        response.raise_for_status()
-
-        with open(destination, "wb") as f:
-            for chunk in response.iter_content(chunk_size=self.config.chunk_size):
-                if chunk:
-                    f.write(chunk)
-
-        return destination
 
 
 class Task:
@@ -249,9 +109,7 @@ class Task:
         last_state = None
         previous_progress = ""
 
-        logger.info(
-            f"Waiting for task {self.task_id} to complete (timeout: {timeout}s)"
-        )
+        logger.info(f"Waiting for task {self.task_id} to complete (timeout: {timeout}s)")
 
         while True:
             elapsed_time = time.time() - start_time
@@ -281,8 +139,7 @@ class Task:
 
             if current_state == "SUCCESS":
                 logger.info(
-                    f"Task {self.task_id} completed successfully "
-                    f"after {elapsed_time:.1f}s"
+                    f"Task {self.task_id} completed successfully after {elapsed_time:.1f}s"
                 )
                 self._result = TaskResult(
                     outputs=status["output"],
@@ -293,9 +150,7 @@ class Task:
 
             elif current_state in ("FAILED", "ERROR", "REVOKED", "CANCELLED"):
                 error_msg = status.get("error", "Unknown error")
-                logger.error(
-                    f"Task {self.task_id} failed after {elapsed_time:.1f}s: {error_msg}"
-                )
+                logger.error(f"Task {self.task_id} failed after {elapsed_time:.1f}s: {error_msg}")
                 raise ToolboxAPIError(
                     f"Task failed: state: {current_state} error message: {error_msg}"
                 )
@@ -357,8 +212,10 @@ class Tool:
             try:
                 error_details = response.json()
                 error_message = f"API error: {response.status_code} - {error_details}"
-            except Exception:
-                error_message = f"API error: {response.status_code} - {response.text}"
+            except JSONDecodeError as e:
+                error_message = (
+                    f"API error: {response.status_code} - {response.text} error: {str(e)}"
+                )
             logger.error(error_message)
             raise ToolboxAPIError(error_message)
 
@@ -415,15 +272,13 @@ class ToolboxClient:
 
         # Configure session with retries
         self.session = requests.Session()
-        retry_strategy = Retry(
-            total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504]
-        )
+        retry_strategy = Retry(total=3, backoff_factor=0.3, status_forcelist=[500, 502, 503, 504])
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
         self.session.headers.update(self.headers)
 
-        self.download_manager = DownloadManager(self, download_config)
+        self.download_config = download_config or DownloadConfig()
 
     def tool(self, name: str) -> Tool:
         """Get a tool instance by name.
@@ -456,11 +311,11 @@ class ToolboxClient:
                 return self._upload_file_obj(f, path.name)
         return self._upload_file_obj(file, getattr(file, "name", "unnamed"))
 
+    @retry_decorator(max_retries=3, backoff_factor=0.3)
     def download_file(
         self,
         file_id: str,
         destination: Union[str, Path],
-        use_parallel: Optional[bool] = None,
         output_name: Optional[str] = None,
         task_result: Optional[TaskResult] = None,
     ) -> Path:
@@ -469,7 +324,6 @@ class ToolboxClient:
         Args:
             file_id (str): ID or URL of file to download
             destination (Union[str, Path]): Where to save the file
-            use_parallel (Optional[bool]): Override parallel download setting
             output_name (Optional[str]): Name of the output this file belongs to
             task_result (Optional[TaskResult]): Task result to register the file with
 
@@ -479,85 +333,86 @@ class ToolboxClient:
         Raises:
             ToolboxError: If download fails
         """
-        if use_parallel is not None:
-            original_parallel = self.download_manager.config.use_parallel
-            self.download_manager.config.use_parallel = use_parallel
+        url = (
+            file_id
+            if file_id.startswith(("http://", "https://"))
+            else f"{self.base_url}/api/download/{file_id}"
+        )
 
-        try:
-            url = (
-                file_id
-                if file_id.startswith(("http://", "https://"))
-                else f"{self.base_url}/api/download/{file_id}"
-            )
+        # Get file size and check for content-disposition header
+        response = self.session.head(url)
+        total_size = int(response.headers.get("content-length", 0))
 
-            # Get file size and check for content-disposition header
-            total_size, filename = self.download_manager._file_summary(url)
+        # Try to get filename from content-disposition header
+        content_disposition = response.headers.get("content-disposition")
+        filename = None
+        if content_disposition:
+            filename_match = re.search(r'filename="([^"]+)"|filename=([^;]+)', content_disposition)
+            if filename_match:
+                filename = unquote(filename_match.group(1) or filename_match.group(2))
 
+        # Determine destination path
+        destination_path = Path(destination)
+        if destination_path.exists() and destination_path.is_dir():
+            # If destination is a directory, use the filename from content-disposition or a default
             if filename:
-                destination = Path(destination) / filename
-            else:
-                # If filename not in header, use the original destination
-                destination = Path(destination)
+                destination_path = destination_path / filename
+        elif filename and not destination_path.suffix:
+            # If destination doesn't have an extension but looks like a directory path,
+            # treat it as a directory and append the filename
+            try:
+                # Check if parent directory exists or can be created
+                parent = destination_path.parent
+                if not parent.exists():
+                    parent.mkdir(parents=True, exist_ok=True)
+                if not destination_path.exists() or destination_path.is_dir():
+                    destination_path = destination_path / filename
+            except (OSError, NotADirectoryError):
+                # If we can't create/access the directory, treat destination as a file path
+                pass
 
-            logger.info(
-                f"Starting download to {destination} "
-                f"({total_size / 1024 / 1024:.1f} MB)"
-            )
+        # Ensure parent directory exists
+        destination_path.parent.mkdir(parents=True, exist_ok=True)
 
-            if use_parallel:
-                logger.info("Using parallel download")
+        logger.info(
+            f"Starting download to {destination_path} ({total_size / 1024 / 1024:.1f} MB)"
+        )
 
-            downloaded = 0
-            last_percentage = 0
+        # Simple streaming download
+        response = self.session.get(url, stream=True)
+        response.raise_for_status()
 
-            def progress_callback(chunk_size):
-                nonlocal downloaded, last_percentage
-                downloaded += chunk_size
-                percentage = int((downloaded / total_size) * 100)
-                if percentage > last_percentage and percentage % 10 == 0:
-                    logger.info(f"Download progress: {percentage}%")
-                    last_percentage = percentage
+        downloaded = 0
+        last_percentage = 0
 
-            # Add progress callback to download manager config
-            self.download_manager.config.progress_callback = progress_callback
+        with open(destination_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=self.download_config.chunk_size):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    percentage = int((downloaded / total_size) * 100)
+                    if percentage > last_percentage and percentage % 10 == 0:
+                        logger.info(f"Download progress: {percentage}%")
+                        last_percentage = percentage
 
-            result = self.download_manager.download_file(url, destination)
-            logger.info(f"Download completed to {destination}")
+        logger.info(f"Download completed to {destination_path}")
 
-            # If filename wasn't in header, determine file type and rename if necessary
-            if not filename:
-                file_type = self.determine_file_types({destination.name: destination})[
-                    destination
-                ]
-                extension = self._get_extension_from_mime(file_type)
-                new_path = destination.with_suffix(extension)
-                if new_path != destination:
-                    destination.rename(new_path)
-                    result = new_path
-                    logger.info(f"Renamed {destination} to {new_path}")
+        # Register the downloaded file with the task result if provided
+        if task_result is not None and output_name is not None:
+            task_result.register_downloaded_file(output_name, destination_path)
 
-            # Register the downloaded file with the task result if provided
-            if task_result is not None and output_name is not None:
-                task_result.register_downloaded_file(output_name, result)
-
-            return result
-
-        finally:
-            if use_parallel is not None:
-                self.download_manager.config.use_parallel = original_parallel
+        return destination_path
 
     def download_results(
         self,
         task_result: TaskResult,
         destination: Union[str, Path],
-        use_parallel: Optional[bool] = None,
     ) -> TaskResult:
         """Download all file outputs from a task result.
 
         Args:
             task_result (TaskResult): The task result containing outputs
             destination (Union[str, Path]): Directory where to save the files
-            use_parallel (Optional[bool]): Override parallel download setting
 
         Returns:
             TaskResult: The same task result with registered file paths
@@ -572,66 +427,11 @@ class ToolboxClient:
                 self.download_file(
                     file_id=file_id,
                     destination=destination,
-                    use_parallel=use_parallel,
                     output_name=output["name"],
                     task_result=task_result,
                 )
 
         return task_result
-
-    def determine_file_types(self, files: Dict[str, Path]) -> Dict[Path, str]:
-        """Determine the MIME types of the downloaded files.
-
-        Args:
-            files (Dict[str, Path]): A dictionary mapping original file names
-                to their downloaded paths.
-
-        Returns:
-            Dict[Path, str]: A dictionary mapping file paths to their
-                determined MIME types.
-        """
-        file_types = {}
-        for file_path in files.values():
-            # Try to guess the type using mimetypes
-            mime_type, _ = mimetypes.guess_type(str(file_path))
-
-            # If mimetypes couldn't determine the type, use filetype
-            if mime_type is None:
-                kind = filetype.guess(str(file_path))
-                mime_type = (
-                    kind.mime if kind is not None else "application/octet-stream"
-                )
-
-            file_types[file_path] = mime_type
-        return file_types
-
-    def rename_files_with_extensions(
-        self,
-        files: Dict[str, Path],
-        file_types: Dict[Path, str],
-    ) -> Dict[str, Path]:
-        """Rename the downloaded files with appropriate file extensions based
-        on their MIME types.
-
-        Args:
-            files (Dict[str, Path]): A dictionary mapping original file names
-                to their downloaded paths.
-            file_types (Dict[Path, str]): A dictionary mapping file paths
-                to their MIME types.
-
-        Returns:
-            Dict[str, Path]: A dictionary mapping original file names to their
-                new paths with correct extensions.
-        """
-        renamed_files = {}
-        for original_name, file_path in files.items():
-            mime_type = file_types[file_path]
-            extension = self._get_extension_from_mime(mime_type)
-            new_path = file_path.with_suffix(extension)
-            file_path.rename(new_path)
-            renamed_files[original_name] = new_path
-            logger.info(f"Renamed {file_path} to {new_path}")
-        return renamed_files
 
     @staticmethod
     def configure_logger(level: logging._Level = logging.DEBUG):
@@ -640,9 +440,6 @@ class ToolboxClient:
         handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
         logger.addHandler(handler)
         logger.setLevel(level)
-
-    def _get_extension_from_mime(self, mime_type: str) -> str:
-        return get_extension_from_mime(mime_type)
 
     def _upload_file_obj(self, file_obj: BinaryIO, filename: str) -> str:
         """Internal file upload helper with progress tracking"""

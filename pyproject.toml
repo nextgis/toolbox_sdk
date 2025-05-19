@@ -28,7 +28,7 @@ keywords = [
     "mapping",
 ]
 requires-python = ">=3.8"
-dependencies = ["filetype>=1.2.0", "requests>=2.28.0"]
+dependencies = ["requests>=2.28.0"]
 
 [project.optional-dependencies]
 dev = [
@@ -68,7 +68,9 @@ extra-dependencies = [
 config-path = "none"
 
 [tool.ruff]
+line-length = 99
 lint.select = ["E", "F", "W", "I"]
+lint.ignore = ["E731"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/toolbox_sdk/__init__.py" = ["F401"]

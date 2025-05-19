@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -113,7 +113,7 @@ class TaskResult:
             "outputs": self.outputs,
             "task_id": self.task_id,
             "state": self.state,
-            "file_paths": self.get_serializable_file_paths()
+            "file_paths": self.get_serializable_file_paths(),
         }
 
 
@@ -122,19 +122,5 @@ class DownloadConfig:
     """Configuration for file downloads"""
 
     chunk_size: int = 8192
-    max_workers: int = 4
-    use_parallel: bool = True
-    verify_hash: bool = True
     max_retries: int = 3
     backoff_factor: float = 0.3
-    progress_callback: Optional[Callable[[int], None]] = None
-
-
-@dataclass
-class ChunkInfo:
-    """Information about a file chunk for parallel download"""
-
-    start: int
-    end: int
-    index: int
-    temp_file: Path
