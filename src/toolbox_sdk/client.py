@@ -198,7 +198,7 @@ class Tool:
                 processed_inputs[key] = value
 
         # Construct the correct JSON payload
-        payload = {"operation": self.name, "inputs": processed_inputs, "mode": "api"}
+        payload = {"operation": self.name, "inputs": processed_inputs}
 
         logger.debug(f"Submitting task for tool {self.name} with payload: {payload}")
 
