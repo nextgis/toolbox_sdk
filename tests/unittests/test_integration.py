@@ -24,7 +24,7 @@ class TestIntegration:
             # Mock tool execution
             rsps.add(
                 responses.POST,
-                f"{TEST_BASE_URL}/api/json/execute/",
+                f"{TEST_BASE_URL}/api/tasks/",
                 json={"task_id": TEST_TASK_ID},
                 status=200,
             )
@@ -32,7 +32,7 @@ class TestIntegration:
             # Mock status check
             rsps.add(
                 responses.GET,
-                f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
+                f"{TEST_BASE_URL}/api/tasks/{TEST_TASK_ID}",
                 json={
                     "state": "SUCCESS",
                     "output": [

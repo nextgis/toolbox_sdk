@@ -84,7 +84,7 @@ class Task:
         Raises:
             ToolboxAPIError: If API request fails
         """
-        response = self.client._get(f"/api/json/status/{self.task_id}/")
+        response = self.client._get(f"/api/tasks/{self.task_id}")
         return response.json()
 
     def wait_for_completion(
@@ -203,7 +203,7 @@ class Tool:
         logger.debug(f"Submitting task for tool {self.name} with payload: {payload}")
 
         response = self.client.session.post(
-            f"{self.client.base_url}/api/json/execute/",
+            f"{self.client.base_url}/api/tasks/",
             json=payload,
         )
 

@@ -14,7 +14,7 @@ class TestTool:
 
         responses.add(
             responses.POST,
-            f"{TEST_BASE_URL}/api/json/execute/",
+            f"{TEST_BASE_URL}/api/tasks/",
             json={"task_id": TEST_TASK_ID},
             status=200,
         )
@@ -31,7 +31,7 @@ class TestTool:
         # Mock task submission
         responses.add(
             responses.POST,
-            f"{TEST_BASE_URL}/api/json/execute/",
+            f"{TEST_BASE_URL}/api/tasks/",
             json={"task_id": TEST_TASK_ID},
             status=200,
         )
@@ -39,7 +39,7 @@ class TestTool:
         # Mock task status checks
         responses.add(
             responses.GET,
-            f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
+            f"{TEST_BASE_URL}/api/tasks/{TEST_TASK_ID}",
             json={"state": "SUCCESS", "output": {"result": "value"}},
             status=200,
         )
@@ -57,7 +57,7 @@ class TestTask:
 
         responses.add(
             responses.GET,
-            f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
+            f"{TEST_BASE_URL}/api/tasks/{TEST_TASK_ID}",
             json={"state": "RUNNING"},
             status=200,
         )
@@ -71,7 +71,7 @@ class TestTask:
 
         responses.add(
             responses.GET,
-            f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
+            f"{TEST_BASE_URL}/api/tasks/{TEST_TASK_ID}",
             json={"state": "SUCCESS", "output": {"result": "value"}},
             status=200,
         )
@@ -86,7 +86,7 @@ class TestTask:
 
         responses.add(
             responses.GET,
-            f"{TEST_BASE_URL}/api/json/status/{TEST_TASK_ID}/",
+            f"{TEST_BASE_URL}/api/tasks/{TEST_TASK_ID}",
             json={"state": "RUNNING"},
             status=200,
         )
