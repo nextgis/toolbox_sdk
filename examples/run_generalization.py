@@ -31,6 +31,12 @@ toolbox.download_results(result, ".")
 # Check the outputs of the tool
 print(result.outputs)  # Get the output definitions with download path and identifier name
 print(result.get_all_file_paths())  # Get paths of all resulting files as dict with Path objects
-print(result.get_file_path("geometry"))  # Get a specific path of a resulting file named "geometry" as PosixPath
-print(result.get_file_path_as_string("geometry"))  # Get a specific path of a resulting file named "geometry" as string
-print(result.get_serializable_file_paths())  # Get paths of all resulting files as dict with strings
+print(
+    result.get_file_path("geometry")
+)  # Get a specific path of a resulting file named "geometry" as PosixPath
+print(
+    result.get_file_path_as_string("geometry")
+)  # Get a specific path of a resulting file named "geometry" as string
+print(
+    result.get_serializable_file_paths()
+)  # Get paths of all resulting files as dict with strings

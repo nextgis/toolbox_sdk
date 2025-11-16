@@ -292,7 +292,7 @@ class ToolboxClient:
         return Tool(self, name)
 
     @retry_decorator(max_retries=3, backoff_factor=0.3)
-    def upload_file(self, file: Union[str, Path, BinaryIO]) -> str:
+    def upload_file(self, file: Union[str, Path, BinaryIO]) -> Dict[str, Any]:
         """Upload a file to the Toolbox.
 
         Args:
@@ -300,7 +300,8 @@ class ToolboxClient:
                 or file object
 
         Returns:
-            str: File ID for use in tool parameters
+            Dict[str, Any]: File metadata dict containing 'name', 'local', and 's3' fields.
+                Pass this dict directly to tool inputs.
 
         Raises:
             ToolboxAPIError: If upload fails
@@ -374,9 +375,7 @@ class ToolboxClient:
         # Ensure parent directory exists
         destination_path.parent.mkdir(parents=True, exist_ok=True)
 
-        logger.info(
-            f"Starting download to {destination_path} ({total_size / 1024 / 1024:.1f} MB)"
-        )
+        logger.info(f"Starting download to {destination_path} ({total_size / 1024 / 1024:.1f} MB)")
 
         # Simple streaming download
         response = self.session.get(url, stream=True)
@@ -441,15 +440,17 @@ class ToolboxClient:
         logger.addHandler(handler)
         logger.setLevel(level)
 
-    def _upload_file_obj(self, file_obj: BinaryIO, filename: str) -> str:
+    def _upload_file_obj(self, file_obj: BinaryIO, filename: str) -> Dict[str, Any]:
         """Internal file upload helper with progress tracking"""
         response = self._post(
-            f"/api/upload/?filename={filename}",
+            f"/api/upload/?filename={filename}&format=json",
             data=FileUploadMonitor(file_obj, filename),
         )
 
         logger.info(f"Upload completed for {filename}")
-        return response.text
+
+        # Return JSON response directly
+        return response.json()
 
     def _get(self, path: str, **kwargs) -> requests.Response:
         """Make GET request"""

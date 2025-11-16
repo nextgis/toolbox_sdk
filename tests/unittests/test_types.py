@@ -42,7 +42,7 @@ class TestTaskResult:
                     "title": "File Output",
                     "type": "file",
                     "value": "https://toolbox.nextgis.com/api/download/abc123/result.tif",
-                }
+                },
             ],
             task_id="task-123",
             state="SUCCESS",
@@ -71,7 +71,7 @@ class TestTaskResult:
                     "title": "Output Vector",
                     "type": "file",
                     "value": "https://toolbox.nextgis.com/api/download/def456/result.geojson",
-                }
+                },
             ],
             task_id="task-123",
             state="SUCCESS",
@@ -120,7 +120,7 @@ class TestTaskResult:
                     "title": "File Output",
                     "type": "file",
                     "value": "https://toolbox.nextgis.com/api/download/abc123/result.tif",
-                }
+                },
             ],
             task_id="task-123",
             state="SUCCESS",

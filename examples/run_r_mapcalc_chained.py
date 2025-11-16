@@ -20,13 +20,13 @@ r_mapcalc = toolbox.tool("r_mapcalc")
 
 # Upload the two raster files
 A_upload = toolbox.upload_file("band4.tif")
-B_upload  = toolbox.upload_file("band5.tif")
+B_upload = toolbox.upload_file("band5.tif")
 
 # Run r_mapcalc to add the two raster, use the upload ids
 result_a = r_mapcalc(
     {
-        "A": A_upload ,
-        "B": B_upload ,
+        "A": A_upload,
+        "B": B_upload,
         "expression": "A + B",
     }
 )
@@ -34,8 +34,8 @@ result_a = r_mapcalc(
 # Run r_mapcalc to subtract the two raster, use the upload ids
 result_b = r_mapcalc(
     {
-        "A": A_upload ,
-        "B": B_upload ,
+        "A": A_upload,
+        "B": B_upload,
         "expression": "A - B",
     }
 )

@@ -24,15 +24,28 @@ class TestToolboxClient:
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")
 
+        # Mock JSON response from upload endpoint
+        upload_response = {
+            "name": "test.txt",
+            "local": {"uuid": TEST_FILE_ID.replace("storage/", "")},
+            "s3": None,
+        }
+
         responses.add(
             responses.POST,
-            f"{TEST_BASE_URL}/api/upload/?filename=test.txt",
-            body=TEST_FILE_ID,
+            f"{TEST_BASE_URL}/api/upload/?filename=test.txt&format=json",
+            json=upload_response,
             status=200,
         )
 
-        file_id = client.upload_file(test_file)
-        assert file_id == TEST_FILE_ID
+        file_data = client.upload_file(test_file)
+
+        # Verify dict is returned with correct structure
+        assert isinstance(file_data, dict)
+        assert file_data["name"] == "test.txt"
+        assert file_data["local"]["uuid"] == TEST_FILE_ID.replace("storage/", "")
+        assert file_data["s3"] is None
+
         assert len(responses.calls) == 1
 
     @responses.activate
@@ -46,7 +59,7 @@ class TestToolboxClient:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="test_file.txt"'
+                "content-disposition": 'attachment; filename="test_file.txt"',
             },
             status=200,
         )
@@ -81,7 +94,7 @@ class TestToolboxClient:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="test_file.txt"'
+                "content-disposition": 'attachment; filename="test_file.txt"',
             },
             status=200,
         )
@@ -115,11 +128,11 @@ class TestToolboxClient:
                     "name": "output_file",
                     "title": "Output File",
                     "type": "file",
-                    "value": TEST_FILE_ID
+                    "value": TEST_FILE_ID,
                 }
             ],
             task_id="test-task-id",
-            state="SUCCESS"
+            state="SUCCESS",
         )
 
         # Mock HEAD request
@@ -128,7 +141,7 @@ class TestToolboxClient:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="result.txt"'
+                "content-disposition": 'attachment; filename="result.txt"',
             },
             status=200,
         )
@@ -143,10 +156,7 @@ class TestToolboxClient:
 
         # Download with task result registration
         result = client.download_file(
-            TEST_FILE_ID,
-            tmp_path,
-            output_name="output_file",
-            task_result=task_result
+            TEST_FILE_ID, tmp_path, output_name="output_file", task_result=task_result
         )
 
         # Verify file was downloaded

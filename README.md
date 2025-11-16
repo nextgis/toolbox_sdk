@@ -1,12 +1,15 @@
 # NextGIS Toolbox SDK
 
-A Python SDK for interacting with NextGIS Toolbox API, providing convenient access to geographical data processing tools.
+A Python SDK for interacting with NextGIS Toolbox API, providing convenient access to geographical data processing
+tools.
 
 ## Features
 
 - Easy-to-use interface for NextGIS Toolbox tools
 - Synchronous and asynchronous task execution
-- Robust file upload and download capabilities
+- Robust file upload and download capabilities with rich metadata
+- Simple dict-based file references - what the server returns is what you send
+- Access to file metadata: original filename, UUID, and storage type
 - Built-in retry mechanism for API operations
 - Progress tracking for file operations
 - Comprehensive logging system
@@ -156,9 +159,94 @@ ndvi_path = ndvi_result.get_file_path_as_string("result_file")
 print(f"NDVI raster is available at: {ndvi_path}")
 ```
 
+## File Uploads
+
+When you upload a file using `upload_file()`, the SDK returns a dictionary containing file metadata. This dict can be
+passed directly to tools.
+
+### Basic Usage
+
+```python
+from toolbox_sdk import ToolboxClient
+
+toolbox = ToolboxClient("your-api-key")
+
+# Upload a file - returns a dict with metadata
+file_data = toolbox.upload_file("band4.tif")
+# Returns: {"name": "band4.tif", "local": {"uuid": "..."}, "s3": null}
+
+# Pass the dict directly to tools
+result = toolbox.tool("r_mapcalc")({"A": file_data, "expression": "A * 2"})
+```
+
+### Accessing File Metadata
+
+The returned dictionary contains all file metadata:
+
+```python
+# Upload a file
+file_data = toolbox.upload_file("my_data.geojson")
+
+# Access the original filename
+print(f"Filename: {file_data['name']}")
+# Output: Filename: my_data.geojson
+
+# Get the unique file identifier
+if file_data["local"]:
+    uuid = file_data["local"]["uuid"]
+    storage = "local"
+elif file_data["s3"]:
+    uuid = file_data["s3"]["uuid"]
+    storage = "s3"
+
+print(f"UUID: {uuid}")
+# Output: UUID: 01961f79-ac76-9c7d-fae6-dddff5638b47
+
+print(f"Storage: {storage}")
+# Output: Storage: local (or s3)
+```
+
+### File Data Structure
+
+The upload returns a dictionary with the following structure:
+
+```python
+{
+    "name": str,              # Original filename
+    "local": {                # Present if stored locally
+        "uuid": str           # Unique file identifier
+    } or None,
+    "s3": {                   # Present if stored in S3
+        "uuid": str           # Unique file identifier
+    } or None
+}
+```
+
+### Example: Tracking Uploaded Files
+
+```python
+from toolbox_sdk import ToolboxClient
+
+toolbox = ToolboxClient("your-api-key")
+
+# Upload multiple files
+files = []
+for filename in ["band4.tif", "band5.tif", "mask.tif"]:
+    file_data = toolbox.upload_file(filename)
+    files.append(file_data)
+
+# Use the uploaded files in a tool
+result = toolbox.tool("r_mapcalc")({
+    "A": files[0],  # Pass dicts directly
+    "B": files[1],
+    "expression": "(A - B) / (A + B)"
+})
+```
+
 ## Environment Variables
 
-`ToolboxClient` uses the `TOOLBOX_API_KEY` and `TOOLBOX_BASE_URL` environment variables as default values for the corresponding parameters. Thus, you can configure it using these variables.
+`ToolboxClient` uses the `TOOLBOX_API_KEY` and `TOOLBOX_BASE_URL` environment variables as default values for the
+corresponding parameters. Thus, you can configure it using these variables.
 
 ```
 $ export TOOLBOX_API_KEY=your-api-key
@@ -167,7 +255,8 @@ $ python
 >>> toolbox = ToolboxClient()
 ```
 
-This also means that you can use `.env` files to configure the SDK via the [dotenv](https://github.com/theskumar/python-dotenv) library:
+This also means that you can use `.env` files to configure the SDK via
+the [dotenv](https://github.com/theskumar/python-dotenv) library:
 
 ```
 $ unset TOOLBOX_API_KEY
@@ -267,17 +356,17 @@ with open("task_result.json", "w") as f:
 # Later, you can load and use the paths
 with open("task_result.json", "r") as f:
     loaded_result = json.loads(f.read())
-    
+
 print(f"Task ID: {loaded_result['task_id']}")
 print(f"File paths: {loaded_result['file_paths']}")
 ```
 
 ## Key Components
 
-- ToolboxClient: Main client for API interaction
-- Tool: Represents individual Toolbox tools
-- Task: Handles asynchronous operations
-- TaskResult: Stores tool outputs and downloaded file paths
+- **ToolboxClient**: Main client for API interaction
+- **Tool**: Represents individual Toolbox tools
+- **Task**: Handles asynchronous operations
+- **TaskResult**: Stores tool outputs and downloaded file paths
 
 ## Error Handling
 
@@ -312,4 +401,6 @@ $ git clone git@github.com:nextgis/toolbox_sdk.git
 $ cd toolbox_sdk
 ```
 
-And then use hatch commands: `hatch test`, `hatch fmt`, `hatch build`, etc. To run integration tests, provide `TOOLBOX_API_KEY` (and optionally `TOOLBOX_BASE_URL`) in the `.env` file to avoid setting them using environment variables each time. The tests will use `load_env()` as described above.
+And then use hatch commands: `hatch test`, `hatch fmt`, `hatch build`, etc. To run integration tests, provide
+`TOOLBOX_API_KEY` (and optionally `TOOLBOX_BASE_URL`) in the `.env` file to avoid setting them using environment
+variables each time. The tests will use `load_env()` as described above.

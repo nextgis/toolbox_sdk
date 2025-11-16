@@ -13,11 +13,15 @@ class TestIntegration:
 
         # Mock all API calls
         with responses.RequestsMock() as rsps:
-            # Mock file upload
+            # Mock file upload with JSON response
             rsps.add(
                 responses.POST,
-                f"{TEST_BASE_URL}/api/upload/?filename=input.txt",
-                body=TEST_FILE_ID,
+                f"{TEST_BASE_URL}/api/upload/?filename=input.txt&format=json",
+                json={
+                    "name": "input.txt",
+                    "local": {"uuid": TEST_FILE_ID.replace("storage/", "")},
+                    "s3": None,
+                },
                 status=200,
             )
 
@@ -40,9 +44,9 @@ class TestIntegration:
                             "name": "file",
                             "title": "Output File",
                             "type": "file",
-                            "value": "result-file-id"
+                            "value": "result-file-id",
                         }
-                    ]
+                    ],
                 },
                 status=200,
             )
@@ -53,7 +57,7 @@ class TestIntegration:
                 f"{TEST_BASE_URL}/api/download/result-file-id",
                 headers={
                     "content-length": str(len(test_output_content)),
-                    "content-disposition": 'attachment; filename="result.txt"'
+                    "content-disposition": 'attachment; filename="result.txt"',
                 },
                 status=200,
             )

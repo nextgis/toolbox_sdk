@@ -69,8 +69,10 @@ config-path = "none"
 
 [tool.ruff]
 line-length = 99
-lint.select = ["E", "F", "W", "I"]
-lint.ignore = ["E731"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E731"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/toolbox_sdk/__init__.py" = ["F401"]

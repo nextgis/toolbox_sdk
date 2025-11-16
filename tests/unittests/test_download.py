@@ -15,7 +15,7 @@ class TestDownload:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="test_file.txt"'
+                "content-disposition": 'attachment; filename="test_file.txt"',
             },
             status=200,
         )
@@ -43,7 +43,7 @@ class TestDownload:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="test_file.txt"'
+                "content-disposition": 'attachment; filename="test_file.txt"',
             },
             status=200,
         )
@@ -103,11 +103,11 @@ class TestDownload:
                     "name": "output_file",
                     "title": "Output File",
                     "type": "file",
-                    "value": TEST_FILE_ID
+                    "value": TEST_FILE_ID,
                 }
             ],
             task_id="test-task-id",
-            state="SUCCESS"
+            state="SUCCESS",
         )
 
         # Mock HEAD request
@@ -116,7 +116,7 @@ class TestDownload:
             f"{TEST_BASE_URL}/api/download/{TEST_FILE_ID}",
             headers={
                 "content-length": str(len(test_content)),
-                "content-disposition": 'attachment; filename="result.txt"'
+                "content-disposition": 'attachment; filename="result.txt"',
             },
             status=200,
         )
@@ -131,10 +131,7 @@ class TestDownload:
 
         # Download with task result registration
         result = client.download_file(
-            TEST_FILE_ID,
-            output_dir,
-            output_name="output_file",
-            task_result=task_result
+            TEST_FILE_ID, output_dir, output_name="output_file", task_result=task_result
         )
 
         # Verify file was downloaded
@@ -156,27 +153,12 @@ class TestDownload:
         # Create a task result with multiple file outputs
         task_result = TaskResult(
             outputs=[
-                {
-                    "name": "file1",
-                    "title": "File 1",
-                    "type": "file",
-                    "value": f"{TEST_FILE_ID}_1"
-                },
-                {
-                    "name": "file2",
-                    "title": "File 2",
-                    "type": "file",
-                    "value": f"{TEST_FILE_ID}_2"
-                },
-                {
-                    "name": "text",
-                    "title": "Text Output",
-                    "type": "unicode",
-                    "value": "Some text"
-                }
+                {"name": "file1", "title": "File 1", "type": "file", "value": f"{TEST_FILE_ID}_1"},
+                {"name": "file2", "title": "File 2", "type": "file", "value": f"{TEST_FILE_ID}_2"},
+                {"name": "text", "title": "Text Output", "type": "unicode", "value": "Some text"},
             ],
             task_id="test-task-id",
-            state="SUCCESS"
+            state="SUCCESS",
         )
 
         # Mock HEAD and GET requests for both files
@@ -189,7 +171,7 @@ class TestDownload:
                 f"{TEST_BASE_URL}/api/download/{file_id}",
                 headers={
                     "content-length": str(len(test_content)),
-                    "content-disposition": f'attachment; filename="result{i}.txt"'
+                    "content-disposition": f'attachment; filename="result{i}.txt"',
                 },
                 status=200,
             )
