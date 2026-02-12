@@ -342,7 +342,9 @@ class ToolboxClient:
 
         # Get file size and check for content-disposition header
         response = self.session.head(url)
-        total_size = int(response.headers.get("content-length", 0))
+        total_size = int(response.headers.get("content-length", 0)) or int(
+            response.headers.get("x-content-length", 0)
+        )
 
         # Try to get filename from content-disposition header
         content_disposition = response.headers.get("content-disposition")
@@ -389,6 +391,8 @@ class ToolboxClient:
                 if chunk:
                     f.write(chunk)
                     downloaded += len(chunk)
+                    if total_size <= 0:
+                        continue
                     percentage = int((downloaded / total_size) * 100)
                     if percentage > last_percentage and percentage % 10 == 0:
                         logger.info(f"Download progress: {percentage}%")
